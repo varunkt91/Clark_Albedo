@@ -16,10 +16,19 @@ def maskS2clouds(image):
 
 
 
-# Apply quality mask: keep only BRDF_Albedo_Band_Quality == 0
-def mask_modis_clouds(pair):
-    albedo = ee.Image(pair.get('primary'))
-    qa = ee.Image(pair.get('secondary'))
-    mask = qa.eq(0)  # 0 = good quality
-    return albedo.updateMask(mask).copyProperties(albedo, ['system:time_start'])
+def mask_cloudy_pixels(img, max_cloud_prob=20):
+    """
+    Masks out pixels in a Sentinel-2 image where cloud probability exceeds the threshold.
+    
+    Args:
+        img (ee.Image): A Sentinel-2 image with a 'cloud_mask' image attached as a property.
+        max_cloud_prob (int): Cloud probability threshold (0–100).
+    
+    Returns:
+        ee.Image: Cloud-masked Sentinel-2 image.
+    """
+    cloud_prob = ee.Image(img.get('cloud_mask')).select('probability')
+    mask = cloud_prob.lt(max_cloud_prob)
+    return img.updateMask(mask)
+
 

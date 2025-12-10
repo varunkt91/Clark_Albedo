@@ -1,0 +1,15 @@
+name: albedo_data_download_GEE
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - earthengine-api
+  - pandas
+  - geopandas
+  - numpy
+  - rasterio
+  - shapely
+  - gdal
+  - jupyter
+  - geemap

@@ -16,7 +16,7 @@ def maskS2clouds(image):
 
 
 
-def mask_cloudy_pixels(img, max_cloud_prob=20):
+def mask_cloudy_pixels(img, max_cloud_prob):
     """
     Masks out pixels in a Sentinel-2 image where cloud probability exceeds the threshold.
     

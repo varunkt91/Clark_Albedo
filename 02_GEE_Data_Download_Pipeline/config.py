@@ -11,8 +11,8 @@ Map = geemap.Map(center=[-124.3998113967669, 41.620634777502005], zoom=10)
 ee.Initialize()  # Optional here
 
 
-startDate = '2020-04-01'
-endDate = '2020-04-30'
+startDate = '2023-04-01'
+endDate = '2023-04-30'
 cloud_cover = 5
 max_cloud_probability=10
 # Define region of interest (example: a rectangle)

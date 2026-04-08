@@ -38,9 +38,9 @@ def split_csv(input_path, output_dir, n_samples=None,
     val, test = train_test_split(temp, test_size=(1 - val_size), random_state=random_state)
 
     # Save CSVs
-    train.to_csv(f"{output_dir}/train_200k.csv", index=False)
-    val.to_csv(f"{output_dir}/validation_200k.csv", index=False)
-    test.to_csv(f"{output_dir}/test_200k.csv", index=False)
+    train.to_csv(f"{output_dir}/train.csv", index=False)
+    val.to_csv(f"{output_dir}/validation.csv", index=False)
+    test.to_csv(f"{output_dir}/test.csv", index=False)
 
     print(f"✅ Files saved in {output_dir}")
     print(f"   Train: {len(train)}, Validation: {len(val)}, Test: {len(test)}")

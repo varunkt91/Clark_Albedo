@@ -68,48 +68,6 @@ def get_land_cover_labels_and_colors():
     return land_cover_labels, land_cover_colors
 
 import pandas as pd
-# def plot_class_distribution(train_path, val_path, test_path, class_column="landcover"):
-#     # Load CSVs
-#     train = pd.read_csv(train_path)
-#     val = pd.read_csv(val_path)
-#     test = pd.read_csv(test_path)
-
-#     # Count per class
-#     train_counts = train[class_column].value_counts().sort_index()
-#     val_counts = val[class_column].value_counts().sort_index()
-#     test_counts = test[class_column].value_counts().sort_index()
-
-#     # Align indexes
-#     all_classes = sorted(set(train_counts.index) | set(val_counts.index) | set(test_counts.index))
-#     train_counts = train_counts.reindex(all_classes, fill_value=0)
-#     val_counts = val_counts.reindex(all_classes, fill_value=0)
-#     test_counts = test_counts.reindex(all_classes, fill_value=0)
-
-#     # Get labels and colors
-#     land_cover_labels, land_cover_colors = get_land_cover_labels_and_colors()
-#     class_labels = [land_cover_labels.get(c, str(c)) for c in all_classes]
-#     class_colors = [land_cover_colors.get(c, "#333333") for c in all_classes]
-
-#     # Plot
-#     x = range(len(all_classes))
-#     width = 0.25
-
-#     plt.figure(figsize=(14, 7))
-#     plt.bar([i - width for i in x], train_counts, width=width, label="Train", color="skyblue")
-#     plt.bar(x, val_counts, width=width, label="Validation", color="orange")
-#     plt.bar([i + width for i in x], test_counts, width=width, label="Test", color="green")
-
-#     plt.xticks(x, class_labels, rotation=90)
-#     plt.xlabel("Land Cover Class")
-#     plt.ylabel("Number of Samples")
-#     plt.title("Distribution of Samples per Land Cover Class in Train/Val/Test")
-#     plt.legend()
-#     plt.tight_layout()
-#     plt.savefig(r"plot_r2_per_land_cover.png", dpi=300)
-#     plt.show()
-
-
-import pandas as pd
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -616,8 +574,11 @@ def plot_scatter_per_land_cover_with_metrics(data, metrics_df_per_lc,
 
 
 
-import os
-import matplotlib.pyplot as plt
+
+
+###############ORIGINAL
+
+
 
 def plot_predicted_vs_actual(y_train, y_train_pred,
                              y_test, y_test_pred,
@@ -629,68 +590,428 @@ def plot_predicted_vs_actual(y_train, y_train_pred,
                              font_size=20,
                              marker_size=30,
                              axis_tick_size=18):
-    """
-    Plot Predicted vs Actual for Train, Test, and Test_2020 sets with regression metrics.
-    Publication-ready figure with control over font size, marker size, axis tick size, and high resolution.
-    """
 
     os.makedirs(output_dir, exist_ok=True)
+
+    # ------------------------------------------------
+    # 🔹 Scale values to 0–1 for plotting
+    # ------------------------------------------------
+    y_train = np.array(y_train) / 1000
+    y_train_pred = np.array(y_train_pred) / 1000
+    y_test = np.array(y_test) / 1000
+    y_test_pred = np.array(y_test_pred) / 1000
+    y_test_2020 = np.array(y_test_2020) / 1000
+    y_test_2020_pred = np.array(y_test_2020_pred) / 1000
+
+    # ------------------------------------------------
+    # 🔹 Scale metrics to 0–1
+    # ------------------------------------------------
+    metrics_scaled = metrics_df.copy()
+
+    for col in ["MAE", "RMSE", "ubRMSE", "Bias"]:
+        if col in metrics_scaled.columns:
+            metrics_scaled[col] = metrics_scaled[col] / 1000
+
     plt.figure(figsize=figsize)
 
-    # Common properties
     scatter_kwargs = dict(alpha=0.6, s=marker_size, edgecolor='k')
     line_kwargs = dict(color='red', linestyle='--', linewidth=2)
+
     title_font = {'fontsize': font_size + 2, 'fontweight': 'bold'}
     label_font = {'fontsize': font_size}
 
+    def set_limits_and_1to1():
+        plt.plot([0, 1], [0, 1], **line_kwargs)
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
+
+    def format_metrics(row):
+
+        text = []
+
+        for k, v in row.items():
+
+            if k == "R2":
+                text.append(f"R²: {v:.3f}")
+
+            else:
+                text.append(f"{k}: {v:.3f}")
+
+        return "\n".join(text)
+
     # --------------------------
-    # Train plot
+    # Train
     # --------------------------
     plt.subplot(1, 3, 1)
+    set_limits_and_1to1()
+
     plt.scatter(y_train, y_train_pred, **scatter_kwargs)
-    plt.plot([y_train.min(), y_train.max()], [y_train.min(), y_train.max()], **line_kwargs)
+
     plt.xlabel("MODIS Albedo", **label_font)
-    plt.ylabel("Estimated", **label_font)
+    plt.ylabel("RF-Estimated", **label_font)
+
     plt.title("Train 2021 (In-year)", **title_font)
+
     plt.xticks(fontsize=axis_tick_size)
     plt.yticks(fontsize=axis_tick_size)
-    train_text = "\n".join([f"{k}: {v:.3f}" for k, v in metrics_df.loc["Train"].items()])
-    plt.text(0.05, 0.95, train_text, transform=plt.gca().transAxes,
-             verticalalignment='top', bbox=dict(facecolor='white', alpha=0.7), fontsize=font_size)
+
+    train_text = format_metrics(metrics_scaled.loc["Train"])
+
+    plt.text(0.05, 0.95, train_text,
+             transform=plt.gca().transAxes,
+             verticalalignment='top',
+             bbox=dict(facecolor='white', alpha=0.7),
+             fontsize=font_size)
 
     # --------------------------
-    # Test plot
+    # Test 2021
     # --------------------------
     plt.subplot(1, 3, 2)
+    set_limits_and_1to1()
+
     plt.scatter(y_test, y_test_pred, **scatter_kwargs)
-    plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], **line_kwargs)
+
     plt.xlabel("MODIS Albedo", **label_font)
-    plt.ylabel("Estimated", **label_font)
+    plt.ylabel("RF-Estimated", **label_font)
+
     plt.title("Test 2021 (In-year)", **title_font)
+
     plt.xticks(fontsize=axis_tick_size)
     plt.yticks(fontsize=axis_tick_size)
-    test_text = "\n".join([f"{k}: {v:.3f}" for k, v in metrics_df.loc["Test_All"].items()])
-    plt.text(0.05, 0.95, test_text, transform=plt.gca().transAxes,
-             verticalalignment='top', bbox=dict(facecolor='white', alpha=0.7), fontsize=font_size)
+
+    test_text = format_metrics(metrics_scaled.loc["Test_All"])
+
+    plt.text(0.05, 0.95, test_text,
+             transform=plt.gca().transAxes,
+             verticalalignment='top',
+             bbox=dict(facecolor='white', alpha=0.7),
+             fontsize=font_size)
 
     # --------------------------
-    # Test 2020 plot
+    # Test 2020
     # --------------------------
     plt.subplot(1, 3, 3)
+    set_limits_and_1to1()
+
     plt.scatter(y_test_2020, y_test_2020_pred, **scatter_kwargs)
-    plt.plot([y_test_2020.min(), y_test_2020.max()], [y_test_2020.min(), y_test_2020.max()], **line_kwargs)
+
     plt.xlabel("MODIS Albedo", **label_font)
-    plt.ylabel("Estimated", **label_font)
+    plt.ylabel("RF-Estimated", **label_font)
+
     plt.title("Test 2020 (Out-of-year)", **title_font)
+
     plt.xticks(fontsize=axis_tick_size)
     plt.yticks(fontsize=axis_tick_size)
-    test2020_text = "\n".join([f"{k}: {v:.3f}" for k, v in metrics_df.loc["Test_2020"].items()])
-    plt.text(0.05, 0.95, test2020_text, transform=plt.gca().transAxes,
-             verticalalignment='top', bbox=dict(facecolor='white', alpha=0.7), fontsize=font_size)
+
+    test2020_text = format_metrics(metrics_scaled.loc["Test_2020"])
+
+    plt.text(0.05, 0.95, test2020_text,
+             transform=plt.gca().transAxes,
+             verticalalignment='top',
+             bbox=dict(facecolor='white', alpha=0.7),
+             fontsize=font_size)
 
     plt.tight_layout()
-    pred_plot_file = os.path.join(output_dir, "predicted_vs_actual.png")
-    plt.savefig(pred_plot_file, dpi=dpi, bbox_inches='tight')
+
+    out = os.path.join(output_dir, "predicted_vs_actual_scaled_0_1.png")
+
+    plt.savefig(out, dpi=dpi, bbox_inches='tight')
+
     plt.show()
 
-    print(f"✅ Publication-ready predicted vs actual plots saved to {pred_plot_file}")
+    print(f"✅ Scaled (0–1) predicted vs actual plots saved to {out}")
+    
+    
+    
+# for NN
+
+def plot_predicted_vs_actual_NN(y_train, y_train_pred,
+                                y_test, y_test_pred,
+                                y_test_2020, y_test_2020_pred,
+                                metrics_df,
+                                output_dir="output",
+                                figsize=(20, 6),
+                                dpi=300,
+                                font_size=20,
+                                marker_size=30,
+                                axis_tick_size=18):
+
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # ------------------------------------------------
+    # Keep inputs as provided (already scaled to 0–1)
+    # ------------------------------------------------
+    y_train = np.array(y_train)
+    y_train_pred = np.array(y_train_pred)
+    y_test = np.array(y_test)
+    y_test_pred = np.array(y_test_pred)
+    y_test_2020 = np.array(y_test_2020)
+    y_test_2020_pred = np.array(y_test_2020_pred)
+
+    plt.figure(figsize=figsize)
+
+    scatter_kwargs = dict(alpha=0.6, s=marker_size, edgecolor='k')
+    line_kwargs = dict(color='red', linestyle='--', linewidth=2)
+
+    title_font = {'fontsize': font_size + 2, 'fontweight': 'bold'}
+    label_font = {'fontsize': font_size}
+
+    # ------------------------------------------------
+    # FIX: Force physical albedo limits
+    # ------------------------------------------------
+    def set_limits_and_1to1():
+        plt.plot([0, 1], [0, 1], **line_kwargs)
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
+
+    def format_metrics(row):
+        text = []
+        for k, v in row.items():
+            if k == "R2":
+                text.append(f"R²: {v:.3f}")
+            else:
+                text.append(f"{k}: {v:.3f}")
+        return "\n".join(text)
+
+    # --------------------------
+    # Train
+    # --------------------------
+    plt.subplot(1, 3, 1)
+    set_limits_and_1to1()
+
+    plt.scatter(y_train, y_train_pred, **scatter_kwargs)
+    plt.xlabel("MODIS Albedo", **label_font)
+    plt.ylabel("NN-Estimated", **label_font)
+    plt.title("Train 2021 (In-year)", **title_font)
+
+    plt.xticks(fontsize=axis_tick_size)
+    plt.yticks(fontsize=axis_tick_size)
+
+    train_text = format_metrics(metrics_df.loc["Train"])
+    plt.text(0.05, 0.95, train_text,
+             transform=plt.gca().transAxes,
+             verticalalignment='top',
+             bbox=dict(facecolor='white', alpha=0.7),
+             fontsize=font_size)
+
+    # --------------------------
+    # Test 2021
+    # --------------------------
+    plt.subplot(1, 3, 2)
+    set_limits_and_1to1()
+
+    plt.scatter(y_test, y_test_pred, **scatter_kwargs)
+    plt.xlabel("MODIS Albedo", **label_font)
+    plt.ylabel("NN-Estimated", **label_font)
+    plt.title("Test 2021 (In-year)", **title_font)
+
+    plt.xticks(fontsize=axis_tick_size)
+    plt.yticks(fontsize=axis_tick_size)
+
+    test_text = format_metrics(metrics_df.loc["Test_All"])
+    plt.text(0.05, 0.95, test_text,
+             transform=plt.gca().transAxes,
+             verticalalignment='top',
+             bbox=dict(facecolor='white', alpha=0.7),
+             fontsize=font_size)
+
+    # --------------------------
+    # Test 2020
+    # --------------------------
+    plt.subplot(1, 3, 3)
+    set_limits_and_1to1()
+
+    plt.scatter(y_test_2020, y_test_2020_pred, **scatter_kwargs)
+    plt.xlabel("MODIS Albedo", **label_font)
+    plt.ylabel("NN-Estimated", **label_font)
+    plt.title("Test 2020 (Out-of-year)", **title_font)
+
+    plt.xticks(fontsize=axis_tick_size)
+    plt.yticks(fontsize=axis_tick_size)
+
+    test2020_text = format_metrics(metrics_df.loc["Test_2020"])
+    plt.text(0.05, 0.95, test2020_text,
+             transform=plt.gca().transAxes,
+             verticalalignment='top',
+             bbox=dict(facecolor='white', alpha=0.7),
+             fontsize=font_size)
+
+    plt.tight_layout()
+
+    out = os.path.join(output_dir, "predicted_vs_actual_NN.png")
+    plt.savefig(out, dpi=dpi, bbox_inches='tight')
+    plt.show()
+
+    print(f"✅ Predicted vs actual plots for NN saved to {out}")
+
+
+# for RF
+def plot_predicted_vs_actual_density(y_train, y_train_pred,
+                             y_test, y_test_pred,
+                             y_test_2020, y_test_2020_pred,
+                             metrics_df,
+                             output_dir="output",
+                             figsize=(20, 6),
+                             dpi=300,
+                             font_size=20,
+                             marker_size=30,
+                             axis_tick_size=18):
+
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LogNorm
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # ------------------------------------------------
+    # Scale values to 0–1
+    # ------------------------------------------------
+    y_train = np.array(y_train) / 1000
+    y_train_pred = np.array(y_train_pred) / 1000
+
+    y_test = np.array(y_test) / 1000
+    y_test_pred = np.array(y_test_pred) / 1000
+
+    y_test_2020 = np.array(y_test_2020) / 1000
+    y_test_2020_pred = np.array(y_test_2020_pred) / 1000
+
+    # ------------------------------------------------
+    # Scale metrics
+    # ------------------------------------------------
+    metrics_scaled = metrics_df.copy()
+
+    for col in ["MAE", "RMSE", "ubRMSE", "Bias"]:
+        if col in metrics_scaled.columns:
+            metrics_scaled[col] = metrics_scaled[col] / 1000
+
+    fig, axes = plt.subplots(1,3, figsize=figsize)
+
+    line_kwargs = dict(color='red', linestyle='--', linewidth=2)
+
+    title_font = {'fontsize': font_size + 2, 'fontweight': 'bold'}
+    label_font = {'fontsize': font_size}
+
+    # ------------------------------------------------
+    # Helper functions
+    # ------------------------------------------------
+    def set_limits_and_1to1(ax):
+
+        ax.plot([0,1],[0,1], **line_kwargs)
+
+        ax.set_xlim(0,1)
+        ax.set_ylim(0,1)
+
+    def density_plot(ax, x, y):
+
+        hb = ax.hexbin(
+            x, y,
+            gridsize=120,
+            cmap="viridis",
+            mincnt=1,
+            norm=LogNorm()
+        )
+
+        cb = fig.colorbar(hb, ax=ax)
+        cb.set_label("Point density", fontsize=font_size-2)
+        cb.ax.tick_params(labelsize=axis_tick_size)
+
+    def format_metrics(row):
+
+        text = []
+
+        for k,v in row.items():
+
+            if k=="R2":
+                text.append(f"R²: {v:.3f}")
+            else:
+                text.append(f"{k}: {v:.3f}")
+
+        return "\n".join(text)
+
+    # ------------------------------------------------
+    # Train
+    # ------------------------------------------------
+    ax = axes[0]
+
+    set_limits_and_1to1(ax)
+
+    density_plot(ax, y_train, y_train_pred)
+
+    ax.set_xlabel("MODIS Albedo", **label_font)
+    ax.set_ylabel("RF-Estimated", **label_font)
+
+    ax.set_title("Train 2021 (In-year)", **title_font)
+
+    ax.tick_params(axis='both', labelsize=axis_tick_size)
+
+    train_text = format_metrics(metrics_scaled.loc["Train"])
+
+    ax.text(0.05,0.95,train_text,
+             transform=ax.transAxes,
+             verticalalignment='top',
+             bbox=dict(facecolor='white',alpha=0.85, edgecolor='gray'),
+             fontsize=font_size)
+
+    # ------------------------------------------------
+    # Test 2021
+    # ------------------------------------------------
+    ax = axes[1]
+
+    set_limits_and_1to1(ax)
+
+    density_plot(ax, y_test, y_test_pred)
+
+    ax.set_xlabel("MODIS Albedo", **label_font)
+    ax.set_ylabel("RF-Estimated", **label_font)
+
+    ax.set_title("Test 2021 (In-year)", **title_font)
+
+    ax.tick_params(axis='both', labelsize=axis_tick_size)
+
+    test_text = format_metrics(metrics_scaled.loc["Test_All"])
+
+    ax.text(0.05,0.95,test_text,
+             transform=ax.transAxes,
+             verticalalignment='top',
+             bbox=dict(facecolor='white',alpha=0.85, edgecolor='gray'),
+             fontsize=font_size)
+
+    # ------------------------------------------------
+    # Test 2020
+    # ------------------------------------------------
+    ax = axes[2]
+
+    set_limits_and_1to1(ax)
+
+    density_plot(ax, y_test_2020, y_test_2020_pred)
+
+    ax.set_xlabel("MODIS Albedo", **label_font)
+    ax.set_ylabel("RF-Estimated", **label_font)
+
+    ax.set_title("Test 2020 (Out-of-year)", **title_font)
+
+    ax.tick_params(axis='both', labelsize=axis_tick_size)
+
+    test2020_text = format_metrics(metrics_scaled.loc["Test_2020"])
+
+    ax.text(0.05,0.95,test2020_text,
+             transform=ax.transAxes,
+             verticalalignment='top',
+             bbox=dict(facecolor='white',alpha=0.85, edgecolor='gray'),
+             fontsize=font_size)
+
+    plt.tight_layout()
+
+    out = os.path.join(output_dir,"predicted_vs_actual_density.png")
+
+    plt.savefig(out,dpi=dpi,bbox_inches="tight")
+
+    plt.show()
+
+    print(f"Density scatter plot saved to {out}")
+

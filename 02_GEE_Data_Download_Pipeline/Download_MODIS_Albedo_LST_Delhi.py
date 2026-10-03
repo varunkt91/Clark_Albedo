@@ -1,19 +1,19 @@
-"""Daily Delhi stack exported to Google Drive at the finest grid (30 m, SRTM).
+"""Daily Delhi stack exported to Google Drive on the native MODIS 500 m grid.
 
-Bands per day (all resampled bilinearly onto the 30 m grid):
+Bands per day (on the MODIS 500 m sinusoidal grid; continuous bands bilinear, SRTM averaged):
   MODIS albedo (MCD43A3, daily, QA-masked), MODIS LST + emissivity (MOD11A1,
   daily, cloud/QC-masked), MODIS ET/PET (MOD16A2GF, 8-day product -> the
   composite covering that day), ERA5-Land air temp + evaporation (daily),
-  elevation / slope / aspect (SRTM 30 m).
+  elevation / slope / aspect (SRTM 30 m, mean-aggregated to 500 m),
+  yearly land cover (MCD12Q1, nearest neighbour; year clamped to available range).
 
 Usage:
     pip install earthengine-api
     earthengine authenticate
     python Download_MODIS_Albedo_LST_Delhi.py --project YOUR_GEE_PROJECT \
-        [--start 2010-01-01] [--end 2024-12-31] [--scale 30] [--folder NAME]
+        [--start 2010-01-01] [--end 2024-12-31] [--folder NAME]
 
-Note: one 30 m, ~45-band daily image of Delhi is several hundred MB; use
---start/--end to export in chunks. Dates come from days with MCD43A3 data.
+Dates come from days with MCD43A3 data.
 """
 import argparse
 import time
@@ -23,7 +23,6 @@ import ee
 
 DELHI_BBOX = [76.84, 28.40, 77.35, 28.88]  # lon_min, lat_min, lon_max, lat_max
 DRIVE_FOLDER = "MODIS_Albedo_LST_ET_Delhi_Daily"
-EXPORT_CRS = "EPSG:32643"  # UTM 43N
 MAX_QUEUED = 2000  # Earth Engine allows ~3000 queued tasks
 
 ALBEDO_BANDS = (
@@ -102,20 +101,40 @@ def era5_day(start, end):
     return daily_mosaic(col, names)
 
 
-def topo():
+def modis_projection():
+    """Native MODIS sinusoidal 500 m grid, taken from the albedo product."""
+    return ee.ImageCollection("MODIS/061/MCD43A3").first().select(0).projection()
+
+
+def topo(proj):
     dem = ee.Image("USGS/SRTMGL1_003").rename("Elevation_m")
-    return dem.addBands(ee.Terrain.slope(dem).rename("Slope_deg")).addBands(
+    t = dem.addBands(ee.Terrain.slope(dem).rename("Slope_deg")).addBands(
         ee.Terrain.aspect(dem).rename("Aspect_deg")).toFloat()
+    return t.reduceResolution(ee.Reducer.mean(), maxPixels=4096).reproject(proj)
 
 
-def build_image(day, region, topo_img):
+def landcover(day, proj):
+    """Yearly MCD12Q1 land cover (nearest neighbour) for the year of `day`."""
+    names = ["LC_Type1_IGBP", "LC_Type2_UMD", "LC_Type3_LAI", "LC_Type4_BGC",
+             "LC_Type5_PFT", "LC_Prop1_LCCS", "LC_Prop2_LCCS", "LC_Prop3_LCCS", "LC_QC"]
+    col = ee.ImageCollection("MODIS/061/MCD12Q1")
+    years = col.aggregate_array("system:time_start")
+    t = ee.Date(day).update(month=1, day=1).millis()
+    t = ee.Number(t).min(ee.Number(years.reduce(ee.Reducer.max())))  # latest year if beyond range
+    img = col.filter(ee.Filter.eq("system:time_start", t)).first()
+    lc = img.select(["LC_Type1", "LC_Type2", "LC_Type3", "LC_Type4", "LC_Type5",
+                     "LC_Prop1", "LC_Prop2", "LC_Prop3", "QC"]).rename(names)
+    return lc.toFloat().reproject(proj)
+
+
+def build_image(day, region, topo_img, proj):
     start = ee.Date(day)
     end = start.advance(1, "day")
     stack = (albedo_day(start, end, region)
              .addBands(lst_day(start, end, region))
              .addBands(et_day(day, region))
              .addBands(era5_day(start, end)))
-    stack = stack.resample("bilinear").addBands(topo_img)
+    stack = stack.resample("bilinear").addBands(topo_img).addBands(landcover(day, proj))
     return stack.clip(region).set("date", day)
 
 
@@ -138,13 +157,15 @@ def main():
     p.add_argument("--project", required=True, help="Cloud project registered for Earth Engine")
     p.add_argument("--start", default="2010-01-01")
     p.add_argument("--end", default=(date.today() + timedelta(days=1)).isoformat())
-    p.add_argument("--scale", type=float, default=30, help="Export resolution in metres (default 30)")
     p.add_argument("--folder", default=DRIVE_FOLDER)
     a = p.parse_args()
 
     ee.Initialize(project=a.project)
     region = ee.Geometry.Rectangle(DELHI_BBOX)
-    topo_img = topo()
+    proj = modis_projection()
+    topo_img = topo(proj)
+    info = proj.getInfo()  # client-side CRS string + 500 m affine transform
+    crs, transform = info["wkt"] if "wkt" in info else info["crs"], info["transform"]
 
     days = available_days(a.start, a.end, region)
     print(f"{len(days)} days with MODIS albedo data")
@@ -153,8 +174,8 @@ def main():
             wait_for_queue()
         name = f"Delhi_daily_{day.replace('-', '_')}"
         ee.batch.Export.image.toDrive(
-            image=build_image(day, region, topo_img), description=name, folder=a.folder,
-            fileNamePrefix=name, region=region, scale=a.scale, crs=EXPORT_CRS,
+            image=build_image(day, region, topo_img, proj), description=name, folder=a.folder,
+            fileNamePrefix=name, region=region, crs=crs, crsTransform=transform,
             maxPixels=1e10).start()
     print(f"Started {len(days)} tasks. Monitor: https://code.earthengine.google.com/tasks")
 
